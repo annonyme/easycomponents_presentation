@@ -1,0 +1,133 @@
+<html>
+	<head>
+		<title>Unser Framework</title>
+	</head>
+	<body>
+		<u>TEXT:</u><br/>
+		<div component="Example" id="ex1"></div>
+    </body>
+    <script>
+        
+        const jsc = {
+            components: [],
+            containers: [],
+            
+            //TODO parse a root-element to this method, so it will become reusable for intra-component rendering
+            init: function() {
+                //build containers
+                let elements = document.querySelectorAll("[component]");
+                elements.forEach((el) => {
+                    let name = el.getAttribute("component");
+
+                    let component = this.components.filter(item => item.name == name);
+
+                    if(component.length > 0){
+                        let comp = component[0];
+
+                        let container = {
+                            baseElement: el,
+                            internalResultId: comp.name + "_random_TODO",
+                            name: comp.name,
+                            render: comp.render,
+                            stateProxies: [],
+                            watchers: [],
+                            watcherCounter: 0,
+                            stateCallCounter: 0,
+                            stateChange: false,
+                            useState: function(initValue){
+                                let result = null;
+                                if(this.stateProxies[this.stateCallCounter]){
+                                    result = this.stateProxies[this.stateCallCounter];
+                                }
+                                else {
+                                    let func = function(container) {
+                                        return function(val) {
+                                            this.value = val;
+                                            container.stateChange = true;
+                                            container.rerender();
+                                        };
+                                    }		
+                                    
+                                    result = {
+                                        value: initValue,
+                                        set: func(this)
+                                    };
+                                    this.stateProxies.push(result);
+                                }
+                                this.stateCallCounter++;
+                                return result;                                
+                            },
+                            useEffect: function(callback, values, noinit){
+                                if(this.watchers[this.watcherCounter]){
+                                    let watcher = this.watchers[this.watcherCounter];
+                                    let change = false;
+                                    values.forEach((val, index) => {
+                                        if(val != watcher[index]){
+                                            change = true;
+                                        }
+                                    });
+
+                                    if(change){
+                                        callback();
+                                    }
+                                }
+                                else {
+                                    this.watchers.push(values);
+                                    if(!noinit) {
+                                        callback();  
+                                    }                                      
+                                }
+                                this.watcherCounter++;
+                            },
+                            rerender: function(){
+                                if(this.stateChange) {
+                                    this.stateChange = false;
+                                    this.stateCallCounter = 0;
+                                    this.watcherCounter = 0;
+                                    let el = this.render();
+                                    el.setAttribute("id", this.internalResultId)
+                                    if(this.stateChange) {
+                                        this.rerender(); //recursive call.. thats why a queue is a better solution
+                                    }
+                                    else {
+                                        let existing = document.getElementById(this.internalResultId);
+                                        if(existing) {
+                                            existing.parentNode.removeChild(existing);
+                                        }
+
+                                        if(el) {
+                                            this.baseElement.appendChild(el);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        this.containers.push(container); 
+                    }
+                });
+
+                this.containers.forEach(item => {item.stateChange = true; item.rerender()});
+            }
+        };
+
+        document.addEventListener("DOMContentLoaded", function() {
+            jsc.components.push({
+                name: "Example",
+                render: function() {
+                    let text = this.useState("init");
+
+                    this.useEffect(function() {console.log("blubb")}, [text.value], true);
+
+                    let el = document.createElement("strong");
+                    el.textContent = text.value;
+                    if(text.value == "init"){
+                        setTimeout(() => {text.set("changed!");}, 2000);
+                    }                		
+                    return el;
+                }
+            });
+            jsc.init();
+        });
+    </script>
+</html>
